@@ -4,6 +4,7 @@
 // pantalla, actualización automática.
 import { app, BrowserWindow, Menu, Tray, Notification, nativeImage, shell, session, ipcMain, desktopCapturer, nativeTheme, powerMonitor } from "electron";
 import path from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
@@ -21,6 +22,51 @@ let win = null;
 let tray = null;
 let quitting = false;
 let callActive = false;
+
+// Ajustes de la app (nunca tokens: la sesión vive en el almacén de cookies de Electron).
+const SETTINGS_FILE = () => path.join(app.getPath("userData"), "ajustes.json");
+const DEFAULT_SETTINGS = { closeToTray: true, launchAtLogin: false, channel: "latest", bounds: null };
+let settings = { ...DEFAULT_SETTINGS };
+function loadSettings() {
+  try {
+    settings = { ...DEFAULT_SETTINGS, ...JSON.parse(readFileSync(SETTINGS_FILE(), "utf8")) };
+  } catch {
+    settings = { ...DEFAULT_SETTINGS };
+  }
+}
+function saveSettings(patch) {
+  settings = { ...settings, ...patch };
+  try {
+    writeFileSync(SETTINGS_FILE(), JSON.stringify(settings, null, 2));
+  } catch {
+    /* sin disco: se queda en memoria */
+  }
+}
+
+/** Versión mínima admitida por la web (compatibilidad web–app): si estamos por debajo, hay que actualizar. */
+async function checkMinimumVersion() {
+  try {
+    const res = await fetch(`${SITE}/desktop/version.json`, { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    const minimum = typeof data?.minimum === "string" ? data.minimum : null;
+    if (minimum && compareVersions(app.getVersion(), minimum) < 0 && win) {
+      win.loadFile(path.join(here, "actualizar.html"), { query: { site: SITE, minimum, current: app.getVersion(), note: typeof data?.note === "string" ? data.note : "" } });
+      showWindow();
+    }
+  } catch {
+    /* sin red o sin archivo: se sigue */
+  }
+}
+function compareVersions(a, b) {
+  const pa = a.split("-")[0].split(".").map(Number);
+  const pb = b.split("-")[0].split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
 
 // Una sola instancia: el segundo arranque (o un enlace talkern://) llega a la que ya corre.
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -76,9 +122,12 @@ function showWindow() {
 }
 
 function createWindow() {
+  const bounds = settings.bounds && typeof settings.bounds === "object" ? settings.bounds : {};
   win = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    width: bounds.width ?? 1280,
+    height: bounds.height ?? 820,
+    x: bounds.x,
+    y: bounds.y,
     minWidth: 760,
     minHeight: 520,
     title: "Talkern",
@@ -130,7 +179,13 @@ function createWindow() {
 
   // Cerrar la ventana no cierra la app: sigue en la bandeja (o en el dock) y avisando. En una reunión, se dice claro.
   win.on("close", (event) => {
+    saveSettings({ bounds: win.getNormalBounds() });
     if (quitting) return;
+    if (!settings.closeToTray && !isMac) {
+      quitting = true;
+      app.quit();
+      return;
+    }
     event.preventDefault();
     if (isMac) app.hide();
     else win.hide();
@@ -216,6 +271,26 @@ function setBadge(value) {
   if (isMac && count === 0) app.dock?.setBadge("");
 }
 
+function settingsMenu() {
+  return {
+    label: "Ajustes",
+    submenu: [
+      { label: "Al cerrar la ventana, seguir en la bandeja", type: "checkbox", checked: settings.closeToTray, click: (item) => saveSettings({ closeToTray: item.checked }) },
+      {
+        label: "Abrir Talkern al iniciar sesión en el ordenador",
+        type: "checkbox",
+        checked: settings.launchAtLogin,
+        click: (item) => {
+          saveSettings({ launchAtLogin: item.checked });
+          app.setLoginItemSettings({ openAtLogin: item.checked, openAsHidden: true });
+        },
+      },
+      { type: "separator" },
+      { label: "Recibir versiones beta", type: "checkbox", checked: settings.channel === "beta", click: (item) => { saveSettings({ channel: item.checked ? "beta" : "latest" }); autoUpdater.channel = settings.channel; autoUpdater.allowPrerelease = settings.channel === "beta"; } },
+    ],
+  };
+}
+
 function buildMenu() {
   const template = [
     ...(isMac ? [{ role: "appMenu" }] : []),
@@ -225,6 +300,7 @@ function buildMenu() {
       submenu: [
         { label: "Inicio de Talkern", accelerator: "CmdOrCtrl+Shift+H", click: () => openInApp(`${SITE}/app`) },
         { role: "reload" },
+        settingsMenu(),
         { type: "separator" },
         { role: "resetZoom" },
         { role: "zoomIn" },
@@ -258,6 +334,7 @@ app.whenReady().then(() => {
     });
   });
   if (!app.isDefaultProtocolClient("talkern")) app.setAsDefaultProtocolClient("talkern");
+  loadSettings();
   buildMenu();
   createWindow();
   createTray();
@@ -280,8 +357,14 @@ app.whenReady().then(() => {
   powerMonitor.on("resume", () => sendState("resume"));
   // Actualización automática: al arrancar y cada seis horas.
   autoUpdater.autoDownload = true;
-  autoUpdater.checkForUpdatesAndNotify().catch(() => {});
-  setInterval(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 6 * 60 * 60 * 1000);
+  autoUpdater.channel = settings.channel;
+  autoUpdater.allowPrerelease = settings.channel === "beta";
+  const check = () => {
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+    void checkMinimumVersion();
+  };
+  check();
+  setInterval(check, 6 * 60 * 60 * 1000);
 });
 
 app.on("second-instance", (_event, argv) => {
