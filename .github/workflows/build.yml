@@ -1,0 +1,62 @@
+name: Talkern Desktop
+
+# Cada push: prueba de humo (arranca, carga Talkern, el puente responde). Cada etiqueta v*: instaladores
+# para Mac, Windows y Linux publicados en la Release (de ahí se actualizan las apps instaladas). Las firmas
+# llegan por secretos del repositorio (CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID…); sin ellos, sin firmar.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  humo:
+    name: Prueba de humo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: node --check src/main.js
+      - name: Arranca y carga Talkern (pantalla virtual)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libnss3 libgtk-3-0 libasound2t64 libgbm1 > /dev/null
+          TALKERN_SMOKE=1 xvfb-run -a ./node_modules/.bin/electron --no-sandbox . | tee humo.log
+          grep -q "smoke: ok" humo.log
+
+  instaladores:
+    name: Instaladores (${{ matrix.os }})
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: humo
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Construye y publica en la Release
+        run: pnpm release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Firma de Mac (cuando exista la cuenta de Apple): certificado en base64 y su contraseña, y la notarización.
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Firma de Windows (cuando exista el certificado).
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' }}
