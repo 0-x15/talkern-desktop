@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("talkernDesktop", {
   setBadge: (value) => ipcRenderer.send("badge", value),
   /** Trae la ventana al frente (al pulsar un aviso). */
   focus: () => ipcRenderer.send("focus"),
+  /** Reunión en curso o no: la app lo refleja en la bandeja y avisa al cerrar o salir. */
+  setCallActive: (active) => ipcRenderer.send("call", Boolean(active)),
   /** Un aviso nativo: la app lo enseña y, al pulsarlo, navega a su enlace. */
   notify: (notification) => ipcRenderer.send("notify", notification),
   /** La app pide navegar (enlace talkern://, aviso pulsado). Devuelve cómo dejar de escuchar. */

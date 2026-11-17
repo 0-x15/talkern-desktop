@@ -12,12 +12,15 @@ const { autoUpdater } = require("electron-updater");
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 const SITE = process.env.TALKERN_URL ?? "https://talkern.com";
-const SITE_HOSTS = new Set([new URL(SITE).host, "talkern.com", "www.talkern.com", "staging.talkern.com"]);
+const SITE_HOST = new URL(SITE).host;
+// Solo el sitio configurado (y su «www»): las capacidades nativas no se conceden a otros orígenes.
+const SITE_HOSTS = new Set([SITE_HOST, SITE_HOST.startsWith("www.") ? SITE_HOST.slice(4) : `www.${SITE_HOST}`]);
 const isMac = process.platform === "darwin";
 
 let win = null;
 let tray = null;
 let quitting = false;
+let callActive = false;
 
 // Una sola instancia: el segundo arranque (o un enlace talkern://) llega a la que ya corre.
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -125,12 +128,17 @@ function createWindow() {
     }
   });
 
-  // Cerrar la ventana no cierra la app: sigue en la bandeja (o en el dock) y avisando.
+  // Cerrar la ventana no cierra la app: sigue en la bandeja (o en el dock) y avisando. En una reunión, se dice claro.
   win.on("close", (event) => {
     if (quitting) return;
     event.preventDefault();
     if (isMac) app.hide();
     else win.hide();
+    if (callActive && Notification.isSupported()) {
+      const note = new Notification({ title: "Talkern", body: "La reunión sigue en marcha. Abre Talkern desde la bandeja para volver o colgar.", silent: true });
+      note.on("click", showWindow);
+      note.show();
+    }
   });
   win.on("closed", () => {
     win = null;
@@ -159,6 +167,21 @@ function notify(payload) {
   note.show();
 }
 
+function setCallActive(active) {
+  callActive = active;
+  tray?.setToolTip(active ? "Talkern · en una reunión" : "Talkern");
+}
+
+/** Salir con una reunión en curso: se pregunta antes de colgar. */
+async function quitFromMenu() {
+  if (callActive && win) {
+    const { dialog } = await import("electron");
+    const { response } = await dialog.showMessageBox(win, { type: "question", buttons: ["Colgar y salir", "Seguir en la reunión"], defaultId: 1, cancelId: 1, message: "Estás en una reunión", detail: "Si sales de Talkern, la reunión se cuelga." });
+    if (response !== 0) return;
+  }
+  app.quit();
+}
+
 function createTray() {
   const icon = nativeImage.createFromPath(path.join(here, "..", "build", "icon.png")).resize({ width: 18, height: 18 });
   if (isMac) icon.setTemplateImage(false);
@@ -168,7 +191,7 @@ function createTray() {
     Menu.buildFromTemplate([
       { label: "Abrir Talkern", click: showWindow },
       { type: "separator" },
-      { label: "Salir", click: () => app.quit() },
+      { label: "Salir", click: () => void quitFromMenu() },
     ]),
   );
   tray.on("click", showWindow);
@@ -238,9 +261,20 @@ app.whenReady().then(() => {
   buildMenu();
   createWindow();
   createTray();
-  ipcMain.on("badge", (_event, value) => setBadge(value));
-  ipcMain.on("focus", showWindow);
-  ipcMain.on("notify", (_event, payload) => notify(payload));
+  // Cada mensaje del puente se acepta solo si lo manda la web de Talkern, nunca otra página.
+  const fromSite = (event) => isSiteUrl(event.senderFrame?.url ?? "");
+  ipcMain.on("badge", (event, value) => {
+    if (fromSite(event) && (typeof value === "number" || typeof value === "boolean")) setBadge(value);
+  });
+  ipcMain.on("focus", (event) => {
+    if (fromSite(event)) showWindow();
+  });
+  ipcMain.on("notify", (event, payload) => {
+    if (fromSite(event)) notify(payload);
+  });
+  ipcMain.on("call", (event, active) => {
+    if (fromSite(event)) setCallActive(Boolean(active));
+  });
   // Al suspender y despertar el equipo, la web lo sabe y se reconecta.
   powerMonitor.on("suspend", () => sendState("suspend"));
   powerMonitor.on("resume", () => sendState("resume"));
