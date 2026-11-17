@@ -1,0 +1,107 @@
+{
+  "name": "talkern-desktop",
+  "productName": "Talkern",
+  "version": "0.1.0",
+  "description": "Talkern para escritorio: la app web en una ventana propia, con avisos, no leídos, enlaces y reuniones.",
+  "private": true,
+  "type": "module",
+  "main": "src/main.js",
+  "author": "Talkern",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "start:staging": "TALKERN_URL=https://staging.talkern.com electron .",
+    "start:local": "TALKERN_URL=http://localhost:3001 electron .",
+    "dist": "electron-builder",
+    "release": "electron-builder --publish always",
+    "pack:dir": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^39.2.0",
+    "electron-builder": "^26.0.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.0"
+  },
+  "build": {
+    "appId": "com.talkern.desktop",
+    "productName": "Talkern",
+    "artifactName": "Talkern-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "0-x15",
+      "repo": "talkern-desktop"
+    },
+    "protocols": [
+      {
+        "name": "Talkern",
+        "schemes": [
+          "talkern"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Talkern usa el micrófono en las llamadas y reuniones.",
+        "NSCameraUsageDescription": "Talkern usa la cámara en las videollamadas."
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "language": "3082"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Network",
+      "maintainer": "Talkern"
+    }
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "electron-winstaller"
+    ]
+  }
+}
