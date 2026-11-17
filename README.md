@@ -13,9 +13,10 @@ Sin firma, Mac pide abrir con clic derecho → Abrir y Windows «Más informaci�
 
 1. Sube `version` en `package.json` (por ejemplo `0.1.1`; una beta, `0.2.0-beta.1`), commit a `main`.
 2. Etiqueta y sube la etiqueta: `git tag v0.1.1 && git push origin v0.1.1`.
-3. La CI crea la Release en borrador, construye los instaladores de Windows (x64 y ARM) y Linux (AppImage y .deb), los prueba (instalación silenciosa en Windows y arranque; el AppImage en Linux) y publica la Release. Las apps instaladas se actualizan solas; una beta (`-beta.N`) solo llega a quien tenga «Recibir versiones beta».
+3. La CI crea la Release en borrador, construye el instalador de Linux (AppImage y .deb) y, si la firma está configurada, los de Windows (x64 y ARM) y Mac; los prueba (arranque del AppImage; instalación silenciosa en Windows y arranque) y publica la Release. Las apps instaladas se actualizan solas; una beta (`-beta.N`) solo llega a quien tenga «Recibir versiones beta».
 4. Si algo falla, la Release se queda en borrador (no la ve nadie): corrige, borra la etiqueta y vuelve a etiquetar.
 
-Sin firma, Windows avisa al instalar («Windows protegió su PC» → «Más información» → «Ejecutar de todos modos»); la firma es opcional (secretos `WIN_CSC_LINK` y `WIN_CSC_KEY_PASSWORD`).
+**Nada se publica sin firma.** Un sistema sin firma configurada no se construye, y talkern.com lo enseña como «próximamente».
 
-**Mac** se publica cuando exista la cuenta de Apple Developer (99 $/año): el certificado «Developer ID Application» en base64 (`MAC_CSC_LINK`) y su contraseña (`MAC_CSC_KEY_PASSWORD`), más `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` y `APPLE_TEAM_ID` para notarizar; y la variable del repositorio `PUBLISH_MAC=true`. Sin firma ni notarización, macOS bloquea la app y la actualización automática no funciona, así que hasta entonces no se publica y talkern.com enseña «Mac · próximamente».
+- **Windows**: variable del repositorio `PUBLISH_WINDOWS=true` y los secretos del proveedor: con Azure Trusted Signing, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` y `AZURE_CLIENT_SECRET` (y `win.azureSignOptions` en `package.json`); con un certificado propio en la nube o en archivo, `WIN_CSC_LINK` y `WIN_CSC_KEY_PASSWORD` (o un script de firma propio en `win.signtoolOptions.sign`).
+- **Mac**: `PUBLISH_MAC=true` y, de la cuenta de Apple Developer (99 $/año), el certificado «Developer ID Application» en base64 (`MAC_CSC_LINK`) con su contraseña (`MAC_CSC_KEY_PASSWORD`), más `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` y `APPLE_TEAM_ID` para notarizar.

@@ -1,12 +1,13 @@
 name: Talkern Desktop
 
 # Cada push: prueba de humo (arranca, carga Talkern, el puente responde) en Linux y Windows.
-# Cada etiqueta v*: la Release se crea en borrador; se construyen los instaladores de Windows y Linux y se
-# prueban de verdad (instalación silenciosa en Windows y arranque en modo humo; el AppImage en Linux); al
-# final se publica la Release, de donde se actualizan las apps instaladas. Mac se construye, firma y notariza
-# solo cuando exista la cuenta de Apple: variable del repositorio PUBLISH_MAC=true y los secretos MAC_CSC_LINK,
-# MAC_CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD y APPLE_TEAM_ID. La firma de Windows es
-# opcional (WIN_CSC_LINK y WIN_CSC_KEY_PASSWORD); sin ella, Windows avisa al instalar.
+# Cada etiqueta v*: la Release se crea en borrador; se construye el instalador de Linux (no necesita firma) y,
+# con la firma configurada, el de Windows y el de Mac; se prueban de verdad (arranque del AppImage; instalación
+# silenciosa en Windows y arranque en modo humo) y al final se publica la Release, de donde se actualizan las
+# apps instaladas. Nada sale sin firma: Windows con PUBLISH_WINDOWS=true y los secretos de su proveedor
+# (Azure: AZURE_TENANT_ID, AZURE_CLIENT_ID y AZURE_CLIENT_SECRET; certificado propio: WIN_CSC_LINK y
+# WIN_CSC_KEY_PASSWORD); Mac con PUBLISH_MAC=true y MAC_CSC_LINK, MAC_CSC_KEY_PASSWORD, APPLE_ID,
+# APPLE_APP_SPECIFIC_PASSWORD y APPLE_TEAM_ID.
 on:
   push:
     branches: [main]
@@ -63,14 +64,10 @@ jobs:
           PRE=""; [[ "$GITHUB_REF_NAME" == *-* ]] && PRE="--prerelease"
           gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft $PRE --title "Talkern $GITHUB_REF_NAME" --generate-notes
 
-  instaladores:
-    name: Instalador (${{ matrix.os }})
+  linux:
+    name: Instalador (Linux)
     needs: borrador
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -79,26 +76,46 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - name: Construye y sube a la Release en borrador
-        run: pnpm release
+        run: pnpm release --linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prueba el AppImage (arranque en modo humo)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libnss3 libgtk-3-0 libasound2t64 libgbm1 > /dev/null
+          APP=$(ls dist/*.AppImage | head -1); echo "AppImage: $APP"; chmod +x "$APP"
+          TALKERN_SMOKE=1 TALKERN_SMOKE_FILE="$PWD/humo.txt" xvfb-run -a "$APP" --appimage-extract-and-run --no-sandbox --disable-gpu
+          cat humo.txt && grep -q "^ok" humo.txt
+
+  # Windows solo firmado: el interruptor PUBLISH_WINDOWS=true se pone cuando la firma está configurada
+  # (los secretos de la firma, según el proveedor elegido). Sin él, no se construye ni se publica.
+  windows:
+    name: Instalador (Windows, firmado)
+    if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_WINDOWS == 'true'
+    needs: borrador
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Construye, firma y sube a la Release en borrador
+        run: pnpm release --win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-      - name: Prueba el instalador de Windows (instalación silenciosa y arranque en modo humo)
-        if: runner.os == 'Windows'
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      - name: Prueba el instalador (instalación silenciosa y arranque en modo humo)
         shell: bash
         run: |
           SETUP=$(ls dist/*-win-x64.exe | head -1); echo "Instalador: $SETUP"
           cmd //c start /wait "" "$(cygpath -w "$SETUP")" /S
           APP="$(cygpath "$LOCALAPPDATA")/Programs/Talkern/Talkern.exe"; ls -la "$APP"
           TALKERN_SMOKE=1 TALKERN_SMOKE_FILE="$(pwd -W)/humo.txt" "$APP" --disable-gpu
-          cat humo.txt && grep -q "^ok" humo.txt
-      - name: Prueba el AppImage (arranque en modo humo)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libnss3 libgtk-3-0 libasound2t64 libgbm1 > /dev/null
-          APP=$(ls dist/*.AppImage | head -1); echo "AppImage: $APP"; chmod +x "$APP"
-          TALKERN_SMOKE=1 TALKERN_SMOKE_FILE="$PWD/humo.txt" xvfb-run -a "$APP" --appimage-extract-and-run --no-sandbox --disable-gpu
           cat humo.txt && grep -q "^ok" humo.txt
 
   mac:
@@ -125,8 +142,11 @@ jobs:
 
   publicar:
     name: Publicar la Release
-    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.instaladores.result == 'success' && (needs.mac.result == 'success' || needs.mac.result == 'skipped')
-    needs: [instaladores, mac]
+    if: >-
+      always() && startsWith(github.ref, 'refs/tags/v') && needs.linux.result == 'success' &&
+      (needs.windows.result == 'success' || needs.windows.result == 'skipped') &&
+      (needs.mac.result == 'success' || needs.mac.result == 'skipped')
+    needs: [linux, windows, mac]
     runs-on: ubuntu-latest
     steps:
       - name: Quita el borrador
