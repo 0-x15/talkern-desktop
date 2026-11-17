@@ -2,7 +2,7 @@
 // Una ventana que carga Talkern web; aquí vive solo lo que el navegador no puede dar:
 // bandeja, globo de no leídos, enlaces talkern://, permisos de medios, compartir
 // pantalla, actualización automática.
-import { app, BrowserWindow, Menu, Tray, nativeImage, shell, session, ipcMain, desktopCapturer, nativeTheme } from "electron";
+import { app, BrowserWindow, Menu, Tray, Notification, nativeImage, shell, session, ipcMain, desktopCapturer, nativeTheme, powerMonitor } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -41,10 +41,28 @@ function fromDeepLink(link) {
   }
 }
 
-function openInApp(url) {
+/** Navegar dentro de la web ya cargada (sin recargar); si no hay web cargada, cargarla. */
+function navigateTo(url) {
   if (!win) return;
-  win.loadURL(url);
+  const absolute = (() => {
+    try {
+      return new URL(url, SITE).toString();
+    } catch {
+      return null;
+    }
+  })();
+  if (!absolute || !isSiteUrl(absolute)) return;
+  if (isSiteUrl(win.webContents.getURL())) win.webContents.send("navigate", absolute);
+  else win.loadURL(absolute);
+}
+
+function openInApp(url) {
+  navigateTo(url);
   showWindow();
+}
+
+function sendState(state) {
+  if (win && !win.isDestroyed()) win.webContents.send("state", state);
 }
 
 function showWindow() {
@@ -117,6 +135,28 @@ function createWindow() {
   win.on("closed", () => {
     win = null;
   });
+  win.on("focus", () => sendState("focus"));
+  win.on("blur", () => sendState("blur"));
+  // Sin conexión (o Talkern caído): la página propia, que reintenta sola y vuelve a la web.
+  win.webContents.on("did-fail-load", (_event, code, _description, url, isMainFrame) => {
+    if (!isMainFrame || code === -3 || !isSiteUrl(url)) return;
+    win.loadFile(path.join(here, "offline.html"), { query: { site: SITE } });
+  });
+}
+
+/** Un aviso nativo pedido por la web: título, texto y enlace de Talkern. Al pulsarlo, se navega y se trae la ventana. */
+function notify(payload) {
+  if (!payload || typeof payload !== "object") return;
+  const title = typeof payload.title === "string" ? payload.title.slice(0, 120) : "";
+  const body = typeof payload.body === "string" ? payload.body.slice(0, 300) : "";
+  const url = typeof payload.url === "string" ? payload.url : "";
+  if (!title || !Notification.isSupported()) return;
+  const note = new Notification({ title, body, silent: false });
+  note.on("click", () => {
+    showWindow();
+    if (url) navigateTo(url);
+  });
+  note.show();
 }
 
 function createTray() {
@@ -200,6 +240,10 @@ app.whenReady().then(() => {
   createTray();
   ipcMain.on("badge", (_event, value) => setBadge(value));
   ipcMain.on("focus", showWindow);
+  ipcMain.on("notify", (_event, payload) => notify(payload));
+  // Al suspender y despertar el equipo, la web lo sabe y se reconecta.
+  powerMonitor.on("suspend", () => sendState("suspend"));
+  powerMonitor.on("resume", () => sendState("resume"));
   // Actualización automática: al arrancar y cada seis horas.
   autoUpdater.autoDownload = true;
   autoUpdater.checkForUpdatesAndNotify().catch(() => {});

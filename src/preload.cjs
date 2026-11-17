@@ -9,6 +9,20 @@ contextBridge.exposeInMainWorld("talkernDesktop", {
   setBadge: (value) => ipcRenderer.send("badge", value),
   /** Trae la ventana al frente (al pulsar un aviso). */
   focus: () => ipcRenderer.send("focus"),
+  /** Un aviso nativo: la app lo enseña y, al pulsarlo, navega a su enlace. */
+  notify: (notification) => ipcRenderer.send("notify", notification),
+  /** La app pide navegar (enlace talkern://, aviso pulsado). Devuelve cómo dejar de escuchar. */
+  onNavigate: (callback) => {
+    const handler = (_event, url) => callback(url);
+    ipcRenderer.on("navigate", handler);
+    return () => ipcRenderer.removeListener("navigate", handler);
+  },
+  /** Cambios de estado: focus, blur, suspend, resume, online, offline. */
+  onState: (callback) => {
+    const handler = (_event, state) => callback(state);
+    ipcRenderer.on("state", handler);
+    return () => ipcRenderer.removeListener("state", handler);
+  },
 });
 
 // El globo del navegador (Badging API) pasa a ser el del dock o la barra de tareas.
