@@ -68,6 +68,12 @@ function compareVersions(a, b) {
   return 0;
 }
 
+// La prueba de humo usa su propio nombre y carpeta de datos: nunca choca con la app instalada ni con sus cookies.
+if (process.env.TALKERN_SMOKE) {
+  app.setName("Talkern Smoke");
+  app.setPath("userData", path.join(app.getPath("temp"), "talkern-smoke"));
+}
+
 // Una sola instancia: el segundo arranque (o un enlace talkern://) llega a la que ya corre.
 if (!app.requestSingleInstanceLock()) app.quit();
 
