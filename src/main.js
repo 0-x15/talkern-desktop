@@ -10,6 +10,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { autoUpdater } = require("electron-updater");
+const fs = require("node:fs");
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 const SITE = process.env.TALKERN_URL ?? "https://talkern.com";
@@ -157,6 +158,8 @@ function createWindow() {
   if (smoke) {
     const done = (what) => {
       console.log(`smoke: ${what} ${win?.webContents.getURL() ?? ""}`);
+      // En Windows la salida de consola de la app empaquetada no llega a la CI: el resultado va a un archivo.
+      if (process.env.TALKERN_SMOKE_FILE) fs.writeFileSync(process.env.TALKERN_SMOKE_FILE, `${what}\n`);
       quitting = true;
       app.quit();
     };

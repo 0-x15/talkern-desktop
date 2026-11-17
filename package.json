@@ -38,7 +38,8 @@
     "publish": {
       "provider": "github",
       "owner": "0-x15",
-      "repo": "talkern-desktop"
+      "repo": "talkern-desktop",
+      "releaseType": "draft"
     },
     "protocols": [
       {

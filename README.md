@@ -5,6 +5,17 @@ La app de Talkern para Windows, Mac y Linux: una ventana propia que carga Talker
 - `pnpm install`
 - `pnpm start` (producción), `pnpm start:staging`, `pnpm start:local` (localhost:3001)
 - `pnpm run pack:dir` → app sin empaquetar en `dist/` para probar; `pnpm dist` → instaladores en `dist/` (DMG universal, instalador de Windows x64/arm64, AppImage y .deb)
-- `pnpm release` → publica en las Releases de GitHub (de ahí se actualizan las apps instaladas)
+- `pnpm release` → construye y sube a la Release de GitHub (lo usa la CI; de ahí se actualizan las apps instaladas)
 
 Sin firma, Mac pide abrir con clic derecho → Abrir y Windows «Más información → Ejecutar de todos modos». Las firmas (Apple Developer, Azure Trusted Signing) se añaden con las variables de entorno de electron-builder.
+
+## Publicar una versión
+
+1. Sube `version` en `package.json` (por ejemplo `0.1.1`; una beta, `0.2.0-beta.1`), commit a `main`.
+2. Etiqueta y sube la etiqueta: `git tag v0.1.1 && git push origin v0.1.1`.
+3. La CI crea la Release en borrador, construye los instaladores de Windows (x64 y ARM) y Linux (AppImage y .deb), los prueba (instalación silenciosa en Windows y arranque; el AppImage en Linux) y publica la Release. Las apps instaladas se actualizan solas; una beta (`-beta.N`) solo llega a quien tenga «Recibir versiones beta».
+4. Si algo falla, la Release se queda en borrador (no la ve nadie): corrige, borra la etiqueta y vuelve a etiquetar.
+
+Sin firma, Windows avisa al instalar («Windows protegió su PC» → «Más información» → «Ejecutar de todos modos»); la firma es opcional (secretos `WIN_CSC_LINK` y `WIN_CSC_KEY_PASSWORD`).
+
+**Mac** se publica cuando exista la cuenta de Apple Developer (99 $/año): el certificado «Developer ID Application» en base64 (`MAC_CSC_LINK`) y su contraseña (`MAC_CSC_KEY_PASSWORD`), más `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` y `APPLE_TEAM_ID` para notarizar; y la variable del repositorio `PUBLISH_MAC=true`. Sin firma ni notarización, macOS bloquea la app y la actualización automática no funciona, así que hasta entonces no se publica y talkern.com enseña «Mac · próximamente».

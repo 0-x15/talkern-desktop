@@ -1,8 +1,12 @@
 name: Talkern Desktop
 
-# Cada push: prueba de humo (arranca, carga Talkern, el puente responde). Cada etiqueta v*: instaladores
-# para Mac, Windows y Linux publicados en la Release (de ahí se actualizan las apps instaladas). Las firmas
-# llegan por secretos del repositorio (CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID…); sin ellos, sin firmar.
+# Cada push: prueba de humo (arranca, carga Talkern, el puente responde) en Linux y Windows.
+# Cada etiqueta v*: la Release se crea en borrador; se construyen los instaladores de Windows y Linux y se
+# prueban de verdad (instalación silenciosa en Windows y arranque en modo humo; el AppImage en Linux); al
+# final se publica la Release, de donde se actualizan las apps instaladas. Mac se construye, firma y notariza
+# solo cuando exista la cuenta de Apple: variable del repositorio PUBLISH_MAC=true y los secretos MAC_CSC_LINK,
+# MAC_CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD y APPLE_TEAM_ID. La firma de Windows es
+# opcional (WIN_CSC_LINK y WIN_CSC_KEY_PASSWORD); sin ella, Windows avisa al instalar.
 on:
   push:
     branches: [main]
@@ -14,30 +18,11 @@ permissions:
 
 jobs:
   humo:
-    name: Prueba de humo
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 10 }
-      - uses: actions/setup-node@v4
-        with: { node-version: 24, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      - run: node --check src/main.js
-      - name: Arranca y carga Talkern (pantalla virtual)
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libnss3 libgtk-3-0 libasound2t64 libgbm1 > /dev/null
-          TALKERN_SMOKE=1 xvfb-run -a ./node_modules/.bin/electron --no-sandbox . | tee humo.log
-          grep -q "smoke: ok" humo.log
-
-  instaladores:
-    name: Instaladores (${{ matrix.os }})
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: humo
+    name: Prueba de humo (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -46,17 +31,106 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - name: Construye y publica en la Release
+      - run: node --check src/main.js
+      - name: Pantalla virtual (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libnss3 libgtk-3-0 libasound2t64 libgbm1 > /dev/null
+      - name: Arranca y carga Talkern
+        shell: bash
+        run: |
+          OUT="$PWD/humo.txt"; [ "$RUNNER_OS" = "Windows" ] && OUT="$(pwd -W)/humo.txt"
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            TALKERN_SMOKE=1 TALKERN_SMOKE_FILE="$OUT" xvfb-run -a pnpm exec electron --no-sandbox --disable-gpu .
+          else
+            TALKERN_SMOKE=1 TALKERN_SMOKE_FILE="$OUT" pnpm exec electron --disable-gpu .
+          fi
+          cat humo.txt && grep -q "^ok" humo.txt
+
+  borrador:
+    name: Release en borrador
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: humo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: La etiqueta debe coincidir con la versión de package.json
+        run: |
+          V="v$(node -p "require('./package.json').version")"
+          [ "$GITHUB_REF_NAME" = "$V" ] || { echo "::error::La etiqueta $GITHUB_REF_NAME no coincide con package.json ($V)"; exit 1; }
+      - name: Crea el borrador (si no existe)
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          PRE=""; [[ "$GITHUB_REF_NAME" == *-* ]] && PRE="--prerelease"
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft $PRE --title "Talkern $GITHUB_REF_NAME" --generate-notes
+
+  instaladores:
+    name: Instalador (${{ matrix.os }})
+    needs: borrador
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Construye y sube a la Release en borrador
         run: pnpm release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Firma de Mac (cuando exista la cuenta de Apple): certificado en base64 y su contraseña, y la notarización.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      - name: Prueba el instalador de Windows (instalación silenciosa y arranque en modo humo)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          SETUP=$(ls dist/*-win-x64.exe | head -1); echo "Instalador: $SETUP"
+          cmd //c start /wait "" "$(cygpath -w "$SETUP")" /S
+          APP="$(cygpath "$LOCALAPPDATA")/Programs/Talkern/Talkern.exe"; ls -la "$APP"
+          TALKERN_SMOKE=1 TALKERN_SMOKE_FILE="$(pwd -W)/humo.txt" "$APP" --disable-gpu
+          cat humo.txt && grep -q "^ok" humo.txt
+      - name: Prueba el AppImage (arranque en modo humo)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libnss3 libgtk-3-0 libasound2t64 libgbm1 > /dev/null
+          APP=$(ls dist/*.AppImage | head -1); echo "AppImage: $APP"; chmod +x "$APP"
+          TALKERN_SMOKE=1 TALKERN_SMOKE_FILE="$PWD/humo.txt" xvfb-run -a "$APP" --appimage-extract-and-run --no-sandbox --disable-gpu
+          cat humo.txt && grep -q "^ok" humo.txt
+
+  mac:
+    name: Instalador (Mac, firmado y notarizado)
+    if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_MAC == 'true'
+    needs: borrador
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Construye, firma, notariza y sube a la Release en borrador
+        run: pnpm release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Firma de Windows (cuando exista el certificado).
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' }}
+
+  publicar:
+    name: Publicar la Release
+    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.instaladores.result == 'success' && (needs.mac.result == 'success' || needs.mac.result == 'skipped')
+    needs: [instaladores, mac]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Quita el borrador
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}", GH_REPO: "${{ github.repository }}" }
+        run: |
+          PRE=""; [[ "$GITHUB_REF_NAME" == *-* ]] && PRE="--prerelease"
+          gh release edit "$GITHUB_REF_NAME" --draft=false $PRE
