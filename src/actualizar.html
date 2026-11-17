@@ -24,7 +24,10 @@
 <script>
   const q = new URLSearchParams(location.search);
   const site = q.get("site") || "https://talkern.com";
-  document.getElementById("get").href = site + "/descargar";
+  // Desde Microsoft Store, la versión nueva se instala en la tienda.
+  const fromStore = q.get("store") === "1";
+  document.getElementById("get").href = fromStore ? "ms-windows-store://downloadsandupdates" : site + "/descargar";
+  if (fromStore) document.getElementById("get").textContent = "Actualizar en Microsoft Store";
   const note = q.get("note");
   if (note) document.getElementById("msg").textContent = note + " (tienes la " + q.get("current") + "; hace falta la " + q.get("minimum") + " o posterior)";
 </script>

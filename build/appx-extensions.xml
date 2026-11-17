@@ -1,0 +1,5 @@
+<!-- Arranque con el sistema (tarea de inicio de Windows): desactivada por defecto; se activa en
+     Configuración de Windows → Aplicaciones → Inicio. El protocolo talkern:// lo añade electron-builder. -->
+<desktop:Extension Category="windows.startupTask" Executable="app\Talkern.exe" EntryPoint="Windows.FullTrustApplication">
+  <desktop:StartupTask TaskId="TalkernStartup" Enabled="false" DisplayName="Talkern" />
+</desktop:Extension>

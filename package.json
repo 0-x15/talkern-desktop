@@ -97,6 +97,25 @@
       ],
       "category": "Network",
       "maintainer": "Talkern"
+    },
+    "appx": {
+      "applicationId": "Talkern",
+      "displayName": "Talkern",
+      "identityName": "PENDIENTE.Talkern",
+      "publisher": "CN=PENDIENTE",
+      "publisherDisplayName": "Talkern",
+      "backgroundColor": "#168cfa",
+      "languages": [
+        "es-ES",
+        "en-US"
+      ],
+      "capabilities": [
+        "internetClient",
+        "microphone",
+        "webcam"
+      ],
+      "customExtensionsPath": "build/appx-extensions.xml",
+      "showNameOnTiles": true
     }
   },
   "pnpm": {

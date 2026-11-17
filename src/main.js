@@ -27,6 +27,10 @@ let callActive = false;
 // Ajustes de la app (nunca tokens: la sesión vive en el almacén de cookies de Electron).
 const SETTINGS_FILE = () => path.join(app.getPath("userData"), "ajustes.json");
 const DEFAULT_SETTINGS = { closeToTray: true, launchAtLogin: false, channel: "latest", bounds: null };
+// Instalada desde Microsoft Store (paquete MSIX): las actualizaciones las trae la tienda (sin electron-updater),
+// y el arranque con el sistema se controla en Configuración de Windows → Aplicaciones → Inicio.
+const FROM_STORE = Boolean(process.windowsStore);
+const STORE_UPDATES_URL = "ms-windows-store://downloadsandupdates";
 let settings = { ...DEFAULT_SETTINGS };
 function loadSettings() {
   try {
@@ -52,7 +56,7 @@ async function checkMinimumVersion() {
     const data = await res.json();
     const minimum = typeof data?.minimum === "string" ? data.minimum : null;
     if (minimum && compareVersions(app.getVersion(), minimum) < 0 && win) {
-      win.loadFile(path.join(here, "actualizar.html"), { query: { site: SITE, minimum, current: app.getVersion(), note: typeof data?.note === "string" ? data.note : "" } });
+      win.loadFile(path.join(here, "actualizar.html"), { query: { site: SITE, minimum, current: app.getVersion(), note: typeof data?.note === "string" ? data.note : "", store: FROM_STORE ? "1" : "" } });
       showWindow();
     }
   } catch {
@@ -285,17 +289,21 @@ function settingsMenu() {
     label: "Ajustes",
     submenu: [
       { label: "Al cerrar la ventana, seguir en la bandeja", type: "checkbox", checked: settings.closeToTray, click: (item) => saveSettings({ closeToTray: item.checked }) },
-      {
-        label: "Abrir Talkern al iniciar sesión en el ordenador",
-        type: "checkbox",
-        checked: settings.launchAtLogin,
-        click: (item) => {
-          saveSettings({ launchAtLogin: item.checked });
-          app.setLoginItemSettings({ openAtLogin: item.checked, openAsHidden: true });
-        },
-      },
+      FROM_STORE
+        ? { label: "Abrir al iniciar sesión: en Configuración de Windows → Aplicaciones → Inicio", enabled: false }
+        : {
+            label: "Abrir Talkern al iniciar sesión en el ordenador",
+            type: "checkbox",
+            checked: settings.launchAtLogin,
+            click: (item) => {
+              saveSettings({ launchAtLogin: item.checked });
+              app.setLoginItemSettings({ openAtLogin: item.checked, openAsHidden: true });
+            },
+          },
       { type: "separator" },
-      { label: "Recibir versiones beta", type: "checkbox", checked: settings.channel === "beta", click: (item) => { saveSettings({ channel: item.checked ? "beta" : "latest" }); autoUpdater.channel = settings.channel; autoUpdater.allowPrerelease = settings.channel === "beta"; } },
+      FROM_STORE
+        ? { label: "Las versiones nuevas llegan desde Microsoft Store", enabled: false }
+        : { label: "Recibir versiones beta", type: "checkbox", checked: settings.channel === "beta", click: (item) => { saveSettings({ channel: item.checked ? "beta" : "latest" }); autoUpdater.channel = settings.channel; autoUpdater.allowPrerelease = settings.channel === "beta"; } },
     ],
   };
 }
@@ -322,7 +330,9 @@ function buildMenu() {
     {
       label: "Ayuda",
       submenu: [
-        { label: "Buscar actualizaciones", click: () => autoUpdater.checkForUpdatesAndNotify().catch(() => {}) },
+        FROM_STORE
+          ? { label: "Actualizaciones en Microsoft Store", click: () => shell.openExternal(STORE_UPDATES_URL) }
+          : { label: "Buscar actualizaciones", click: () => autoUpdater.checkForUpdatesAndNotify().catch(() => {}) },
         { label: `Versión ${app.getVersion()}`, enabled: false },
       ],
     },
@@ -364,12 +374,12 @@ app.whenReady().then(() => {
   // Al suspender y despertar el equipo, la web lo sabe y se reconecta.
   powerMonitor.on("suspend", () => sendState("suspend"));
   powerMonitor.on("resume", () => sendState("resume"));
-  // Actualización automática: al arrancar y cada seis horas.
+  // Actualización automática: al arrancar y cada seis horas (desde la tienda, solo la versión mínima).
   autoUpdater.autoDownload = true;
   autoUpdater.channel = settings.channel;
   autoUpdater.allowPrerelease = settings.channel === "beta";
   const check = () => {
-    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+    if (!FROM_STORE) autoUpdater.checkForUpdatesAndNotify().catch(() => {});
     void checkMinimumVersion();
   };
   check();
