@@ -172,6 +172,28 @@ function createWindow() {
     setTimeout(() => done("tiempo agotado"), 20_000);
   }
   win.webContents.session.setSpellCheckerLanguages(["es-ES", "en-US"]);
+  // Corrector (pulido pequeño, parte 3, 26-11-2026): botón derecho sobre una palabra subrayada → las
+  // sugerencias del diccionario y «Añadir al diccionario»; donde se escribe, cortar, copiar y pegar.
+  win.webContents.on("context-menu", (_event, params) => {
+    const items = [];
+    if (params.misspelledWord) {
+      const suggestions = params.dictionarySuggestions.slice(0, 6);
+      for (const suggestion of suggestions) {
+        items.push({ label: suggestion, click: () => win.webContents.replaceMisspelling(suggestion) });
+      }
+      if (suggestions.length === 0) items.push({ label: "Sin sugerencias", enabled: false });
+      items.push({ type: "separator" });
+      items.push({ label: "Añadir al diccionario", click: () => win.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord) });
+      items.push({ type: "separator" });
+    }
+    if (params.isEditable) {
+      items.push({ role: "cut", enabled: params.editFlags.canCut }, { role: "copy", enabled: params.editFlags.canCopy }, { role: "paste", enabled: params.editFlags.canPaste });
+    } else if (params.selectionText.trim()) {
+      items.push({ role: "copy" });
+    }
+    if (items.length === 0) return;
+    Menu.buildFromTemplate(items).popup({ window: win });
+  });
   win.loadURL(SITE);
 
   // Los enlaces de fuera se abren en el navegador; los de Talkern, aquí.

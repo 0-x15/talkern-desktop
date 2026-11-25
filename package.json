@@ -1,7 +1,7 @@
 {
   "name": "talkern-desktop",
   "productName": "Talkern",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Talkern para escritorio: la app web en una ventana propia, con avisos, no leídos, enlaces y reuniones.",
   "private": true,
   "type": "module",
