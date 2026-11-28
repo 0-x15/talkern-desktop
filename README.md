@@ -9,6 +9,13 @@ La app de Talkern para Windows, Mac y Linux: una ventana propia que carga Talker
 
 Sin firma, Mac pide abrir con clic derecho → Abrir y Windows «Más información → Ejecutar de todos modos». Las firmas (Apple Developer, Azure Trusted Signing) se añaden con las variables de entorno de electron-builder.
 
+## Pruebas y fusibles (fase 5 de la auditoría, 28-11-2026)
+
+- `pnpm check` → sintaxis del proceso principal y de los dos preloads (lo corre la CI en cada push).
+- `pnpm test` → pruebas de Playwright que arrancan Electron de verdad contra la web local (`TALKERN_URL`, por defecto http://localhost:3001): qué esquemas salen al navegador del sistema (solo https, http, mailto y tel), que una redirección fuera de Talkern no se carga en la ventana, que la app arranca en la app y que un enlace talkern:// al arrancar llega a su destino, y el puente (versión, descargas). Se corren en local antes de etiquetar una versión.
+- `pnpm fusibles` → lee los fusibles de Electron de la app construida (en `dist/`) y falla si no están como deben: cookies cifradas, sin modo Node, sin `NODE_OPTIONS` ni `--inspect`, solo código del paquete (`electronFuses` en package.json). La CI lo hace tras construir cada instalador. Con las cookies cifradas, quien ya tenía la app vuelve a entrar una vez (la sesión guardada en claro por la 0.1.x deja de leerse).
+- Pantalla compartida: en macOS 15 o posterior el selector del sistema; en el resto, el selector propio (`src/selector.html`) con pantallas y ventanas.
+
 ## Publicar una versión
 
 1. Sube `version` en `package.json` (por ejemplo `0.1.1`; una beta, `0.2.0-beta.1`), commit a `main`.

@@ -32,7 +32,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: node --check src/main.js
+      - run: pnpm check
       - name: Pantalla virtual (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libnss3 libgtk-3-0 libasound2t64 libgbm1 > /dev/null
@@ -79,6 +79,8 @@ jobs:
         run: pnpm release --linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fusibles de Electron (cookies cifradas, sin modo Node ni --inspect)
+        run: pnpm fusibles
       - name: Prueba el AppImage (arranque en modo humo)
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libnss3 libgtk-3-0 libasound2t64 libgbm1 > /dev/null
@@ -109,6 +111,8 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      - name: Fusibles de Electron
+        run: pnpm fusibles
       - name: Prueba el instalador (instalación silenciosa y arranque en modo humo)
         shell: bash
         run: |
@@ -142,6 +146,8 @@ jobs:
           APPX_IDENTITY_NAME: ${{ vars.APPX_IDENTITY_NAME }}
           APPX_PUBLISHER: ${{ vars.APPX_PUBLISHER }}
           APPX_PUBLISHER_DISPLAY_NAME: ${{ vars.APPX_PUBLISHER_DISPLAY_NAME }}
+      - name: Fusibles de Electron
+        run: pnpm fusibles
       - name: Prueba el paquete (instalación con certificado de prueba y arranque en modo humo)
         continue-on-error: true
         shell: pwsh
@@ -192,6 +198,8 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Fusibles de Electron
+        run: pnpm fusibles
 
   publicar:
     name: Publicar la Release

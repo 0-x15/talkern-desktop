@@ -5,31 +5,44 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Talkern · Actualizar</title>
 <style>
-  :root { color-scheme: light dark; --bg: #f5f7fa; --fg: #0f172a; --fg-2: #3f4b61; --accent: #2f5bea; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #121316; --fg: #e7e8ea; --fg-2: #b4bac6; --accent: #5b86ff; } }
+  :root { color-scheme: light dark; --bg: #f5f7fa; --fg: #0f172a; --fg-2: #3f4b61; --accent: #2f5bea; --accent-fg: #ffffff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121316; --fg: #e7e8ea; --fg-2: #b4bac6; --accent: #7da2ff; --accent-fg: #0b1020; } }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--fg); font-family: Inter, ui-sans-serif, system-ui, sans-serif; -webkit-app-region: drag; }
   main { text-align: center; max-width: 40ch; padding: 24px; -webkit-app-region: no-drag; }
   .mark { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 16px; background: linear-gradient(135deg, #2f5bea, #4f8dff); }
   h1 { font-size: 20px; margin: 0 0 8px; } p { color: var(--fg-2); margin: 0 0 18px; line-height: 1.5; }
-  a { display: inline-block; font-weight: 600; color: #fff; background: var(--accent); border-radius: 10px; padding: 10px 16px; text-decoration: none; }
+  a { display: inline-block; font-weight: 600; color: var(--accent-fg); background: var(--accent); border-radius: 10px; padding: 10px 16px; text-decoration: none; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
 </head>
 <body>
 <main>
   <div class="mark" aria-hidden="true"></div>
-  <h1>Hay que actualizar Talkern</h1>
+  <h1 id="title">Hay que actualizar Talkern</h1>
   <p id="msg">Esta versión de la app ya no es compatible con Talkern. Descarga la versión nueva para seguir.</p>
   <a id="get" href="#">Descargar la versión nueva</a>
 </main>
 <script>
   const q = new URLSearchParams(location.search);
   const site = q.get("site") || "https://talkern.com";
+  const lang = q.get("lang") === "en" ? "en" : "es";
+  const texts = {
+    es: { title: "Hay que actualizar Talkern", msg: "Esta versión de la app ya no es compatible con Talkern. Descarga la versión nueva para seguir.", get: "Descargar la versión nueva", store: "Actualizar en Microsoft Store", have: "tienes la", need: "hace falta la", later: "o posterior", doc: "Talkern · Actualizar" },
+    en: { title: "Talkern needs an update", msg: "This version of the app no longer works with Talkern. Download the new version to continue.", get: "Download the new version", store: "Update in Microsoft Store", have: "you have", need: "you need", later: "or later", doc: "Talkern · Update" },
+  }[lang];
+  document.documentElement.lang = lang;
+  document.title = texts.doc;
+  document.getElementById("title").textContent = texts.title;
+  document.getElementById("msg").textContent = texts.msg;
   // Desde Microsoft Store, la versión nueva se instala en la tienda.
   const fromStore = q.get("store") === "1";
-  document.getElementById("get").href = fromStore ? "ms-windows-store://downloadsandupdates" : site + "/descargar";
-  if (fromStore) document.getElementById("get").textContent = "Actualizar en Microsoft Store";
+  const get = document.getElementById("get");
+  get.href = fromStore ? "ms-windows-store://downloadsandupdates" : site + "/descargar";
+  get.textContent = fromStore ? texts.store : texts.get;
   const note = q.get("note");
-  if (note) document.getElementById("msg").textContent = note + " (tienes la " + q.get("current") + "; hace falta la " + q.get("minimum") + " o posterior)";
+  const detail = " (" + texts.have + " " + q.get("current") + "; " + texts.need + " " + q.get("minimum") + " " + texts.later + ")";
+  if (note) document.getElementById("msg").textContent = note + detail;
+  else if (q.get("minimum")) document.getElementById("msg").textContent = texts.msg + detail;
 </script>
 </body>
 </html>

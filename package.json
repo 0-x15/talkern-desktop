@@ -1,7 +1,7 @@
 {
   "name": "talkern-desktop",
   "productName": "Talkern",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Talkern para escritorio: la app web en una ventana propia, con avisos, no leídos, enlaces y reuniones.",
   "private": true,
   "type": "module",
@@ -14,9 +14,14 @@
     "start:local": "TALKERN_URL=http://localhost:3001 electron .",
     "dist": "electron-builder",
     "release": "electron-builder --publish always",
-    "pack:dir": "electron-builder --dir"
+    "pack:dir": "electron-builder --dir",
+    "test": "playwright test",
+    "fusibles": "node scripts/fusibles.mjs",
+    "check": "node --check src/main.js && node --check src/preload.cjs && node --check src/selector-preload.cjs"
   },
   "devDependencies": {
+    "@electron/fuses": "^2.1.3",
+    "@playwright/test": "^1.65.1",
     "electron": "^39.2.0",
     "electron-builder": "^26.0.0"
   },
@@ -70,7 +75,10 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Talkern usa el micrófono en las llamadas y reuniones.",
-        "NSCameraUsageDescription": "Talkern usa la cámara en las videollamadas."
+        "NSCameraUsageDescription": "Talkern usa la cámara en las videollamadas.",
+        "NSAudioCaptureUsageDescription": "Talkern comparte el sonido del equipo al compartir la pantalla en una reunión.",
+        "NSBluetoothAlwaysUsageDescription": "Talkern no usa Bluetooth; este permiso lo pide el motor de la app para los dispositivos de audio.",
+        "NSBluetoothPeripheralUsageDescription": "Talkern no usa Bluetooth; este permiso lo pide el motor de la app para los dispositivos de audio."
       }
     },
     "win": {
@@ -116,6 +124,16 @@
       ],
       "customExtensionsPath": "build/appx-extensions.xml",
       "showNameOnTiles": true
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false,
+      "resetAdHocDarwinSignature": true
     }
   },
   "pnpm": {
